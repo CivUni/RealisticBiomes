@@ -1,6 +1,5 @@
 package com.untamedears.realisticbiomes;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -51,7 +50,7 @@ public class RealisticBiomes extends JavaPlugin {
 		
 		RealisticBiomes.LOG = this.getLogger();
 		LOG.info("name of logger is: " + LOG.getName());
-		this.getLogger().setLevel(Level.FINEST);
+		this.getLogger().setLevel(Level.FINER);
 		
 		// This is done when the world loads now
 		//WorldID.init(this);

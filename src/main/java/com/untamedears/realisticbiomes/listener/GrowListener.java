@@ -1,6 +1,7 @@
 package com.untamedears.realisticbiomes.listener;
 
 
+import com.untamedears.realisticbiomes.persist.BlockGrower;
 import org.bukkit.DyeColor;
 import org.bukkit.Effect;
 import org.bukkit.Material;
@@ -14,6 +15,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockGrowEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -36,6 +38,8 @@ import com.untamedears.realisticbiomes.utils.Fruits;
 import com.untamedears.realisticbiomes.utils.MaterialAliases;
 import com.untamedears.realisticbiomes.utils.Trees;
 
+import java.util.logging.Level;
+
 /**
  * Event listener for all plant growth related events. Whenever a crop, plant block, or sapling attempts to grow, its type
  * is checked against the biomes in which it is permitted to grow. If the biome is not permitted, the event is canceled and
@@ -46,6 +50,7 @@ import com.untamedears.realisticbiomes.utils.Trees;
 public class GrowListener implements Listener {
 	
 	private final RealisticBiomes plugin;
+	private static final BlockFace[] ORTHOGONALS = {BlockFace.NORTH, BlockFace.EAST, BlockFace.SOUTH, BlockFace.WEST};
 	
 	public GrowListener(RealisticBiomes plugin) {
 		super();
@@ -247,18 +252,30 @@ public class GrowListener implements Listener {
 	}
 	
 	@EventHandler
-	public void onBlockPlace(BlockPlaceEvent event) {
+	public void onBlockPlace(final BlockPlaceEvent event) {
 		if (!plugin.persistConfig.enabled)
 			return;
-		
+
+		final Block block = event.getBlockPlaced();
+
+		// check if block will break cactus
+		if (block.getType().isSolid()) {
+			for (final BlockFace face : ORTHOGONALS) {
+				final Block adj = block.getRelative(face);
+				if (Material.CACTUS.equals(adj.getType())) {
+					onColumnPlantBlockBreak(adj);
+				}
+			}
+		}
+
 		// if the block placed was a recognized crop, register it with the manager
 		// unless it is a fruit, then it's persistence is handled by the stem
-		Block block = event.getBlockPlaced();
 		if (Fruits.isFruit(block.getType())) {
 			growFruit(block, false);
 			return;
 		}
-		GrowthConfig growthConfig = MaterialAliases.getConfig(plugin.materialGrowth, block);
+
+		final GrowthConfig growthConfig = MaterialAliases.getConfig(plugin.materialGrowth, block);
 		if (growthConfig == null) {
 			return;	
 		}
@@ -276,31 +293,36 @@ public class GrowListener implements Listener {
 			return;
 		
 		if (MaterialAliases.isColumnBlock(event.getBlock().getType())) {
-			growColumnPlant(event.getBlock());
+			onColumnPlantBlockBreak(event.getBlock());
 		} else {
 			growFruit(event.getBlock(), true);
 		}
 	}
-	
+
 	@EventHandler
-	public void on(BlockPistonExtendEvent event) {
-		if (!plugin.persistConfig.enabled)
+	public void onBlockPistonExtendedEvent(BlockPistonExtendEvent event) {
+		if (!plugin.persistConfig.enabled) {
 			return;
-		
-		for (Block block: event.getBlocks()) {
-			if (MaterialAliases.isColumnBlock(event.getBlock().getType())) {
-				growColumnPlant(event.getBlock());
-			} else{
-				growFruit(block, true);
-			}
+		}
+
+		final Block head = event.getBlock().getRelative(event.getDirection());
+		if (event.getBlocks().isEmpty()) {
+			growAdjacentCropsFromPistonEvent(head, event.getDirection());
+			return;
+		}
+
+		for (final Block block : event.getBlocks()) {
+			final Block futureBlock = block.getRelative(event.getDirection());
+			growAdjacentCropsFromPistonEvent(futureBlock, event.getDirection());
 		}
 	}
-	
+
+	// TODO: I don't think this does much?
 	@EventHandler
-	public void on(BlockPistonRetractEvent event) {
+	public void onBlockPistonRetractEvent(BlockPistonRetractEvent event) {
 		if (!plugin.persistConfig.enabled)
 			return;
-		
+
 		if (MaterialAliases.isColumnBlock(event.getBlock().getType())) {
 			growColumnPlant(event.getBlock());
 		} else {
@@ -343,8 +365,45 @@ public class GrowListener implements Listener {
 		}
 		plugin.growAndPersistBlock(block, true, growthConfig, null, null);
 	}
-	
-	public void growColumnPlant(Block block) {
+
+	private void growAdjacentCropsFromPistonEvent(final Block block, final BlockFace direction) {
+		if (block == null || direction == null) {
+			return;
+		}
+
+		// must check every orthogonal direction for cactus
+		for (final BlockFace face : ORTHOGONALS) {
+			// ignore source direction
+			if (face.equals(direction.getOppositeFace())) {
+				continue;
+			}
+
+			// get adjacent block and check if cactus
+			final Block adjacent = block.getRelative(face);
+			if (Material.CACTUS.equals(adjacent.getType())) {
+				onColumnPlantBlockBreak(adjacent);
+			}
+		}
+	}
+
+	private void onColumnPlantBlockBreak(final Block block) {
+		if (MaterialAliases.isColumnBlock(block.getType())) {
+			final Block origin = MaterialAliases.getOriginBlock(block, block.getType());
+
+			// if any mid-staged block is broken in the column, reset progress
+			if (origin != null && plugin.getPlantManager() != null) {
+				final int verticalDistance = block.getY() - origin.getY();
+				if (verticalDistance >= 0 && verticalDistance < BlockGrower.COLUMN_PLANT_BLOCK_COUNT-1) {
+					plugin.getPlantManager().removePlant(origin);
+					return;
+				}
+			}
+		}
+		// lazy pass to actual growth check
+		growColumnPlant(block);
+	}
+
+	private void growColumnPlant(Block block) {
 		GrowthConfig growthConfig = plugin.materialGrowth.get(block.getType());
 		if (MaterialAliases.isColumnBlock(block.getType())) {
 			block = MaterialAliases.getOriginBlock(block, block.getType());

@@ -35,7 +35,7 @@ import com.untamedears.realisticbiomes.utils.Trees;
 public class BlockGrower {
 
 	public static Logger LOG = Logger.getLogger("RealisticBiomes");
-	private static int COLUMN_PLANT_BLOCK_COUNT = 3;
+	public static int COLUMN_PLANT_BLOCK_COUNT = 3;
 	
 	// store the total growth stages of plants
 	public static HashMap<Material, Integer> growthStages = new HashMap<Material, Integer>();
