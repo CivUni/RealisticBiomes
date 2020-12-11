@@ -27,6 +27,27 @@ public class Plant {
 		}
 		this.fruitGrowth = fruitGrowth;
 	}
+
+	public static final class Row {
+		protected final int w;
+		protected final int x;
+		protected final int y;
+		protected final int z;
+		protected final long date;
+		protected final float growth;
+		protected final float fruitGrowth;
+
+		public Row(int w, int x, int y, int z,
+				   long date, float growth, float fruitGrowth) {
+			this.w = w;
+			this.x = x;
+			this.y = y;
+			this.z = z;
+			this.date = date;
+			this.growth = growth;
+			this.fruitGrowth = fruitGrowth;
+		}
+	}
 	
 	// update the time, return the time since the last update in ms
 	private float updateTime() {

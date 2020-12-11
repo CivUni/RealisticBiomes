@@ -147,7 +147,7 @@ public class GrowListener implements Listener {
 	
 	/**
 	 * Event handler for {@link BlockDispenseEvent}. Cancels all uses of Bonemeal used by a dispenser on crops registered in the config.
-	 * @param event The {@link PlayerDispenseEvent} being handled
+	 * @param event The dispense event being handled
 	 */
 	@EventHandler(ignoreCancelled = true)
 

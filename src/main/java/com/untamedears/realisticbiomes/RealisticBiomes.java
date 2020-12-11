@@ -3,6 +3,8 @@ package com.untamedears.realisticbiomes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -25,6 +27,7 @@ import com.untamedears.realisticbiomes.persist.Plant;
 import com.untamedears.realisticbiomes.persist.PlantManager;
 import com.untamedears.realisticbiomes.utils.Fruits;
 import com.untamedears.realisticbiomes.utils.MaterialAliases;
+import org.bukkit.scheduler.BukkitTask;
 
 public class RealisticBiomes extends JavaPlugin {
 
@@ -39,6 +42,10 @@ public class RealisticBiomes extends JavaPlugin {
 	public boolean replaceFish;
 	public double fishXPChance;
 	public boolean allowTallPlantReplication;
+	private Queue<Runnable> rbTaskQueue;
+	private BukkitTask taskQueueTask;
+	public int maxTaskTime;
+	public int asyncPollPeriod;
 	public BlockGrower blockGrower;
 	public PersistConfig persistConfig;
 	private PlantManager plantManager;
@@ -74,6 +81,8 @@ public class RealisticBiomes extends JavaPlugin {
 		replaceFish = config.getBoolean("replace_fishing", false);
 		fishXPChance  = config.getDouble("fish_xp_chance", 1.0);
 		allowTallPlantReplication = config.getBoolean("allow_tallplant_replication", true);
+		maxTaskTime = config.getInt("max_task_time", 20);
+		asyncPollPeriod = config.getInt("period_between_tasks", 100);
 
 		// load the max log level for our logging hack
 		// if not defined then its just initalized at INFO
@@ -100,10 +109,32 @@ public class RealisticBiomes extends JavaPlugin {
 			blockGrower = new BlockGrower(plantManager, materialGrowth);
 			
 		}
-				
+
+		// Use a thread safe queue in case chunk loads are done async.
+		// The blocking functionality is *not* used.
+		rbTaskQueue = new LinkedBlockingQueue<>();
+		taskQueueTask = getServer().getScheduler().runTaskTimer(this, () -> {
+			long end = System.currentTimeMillis() + Math.max(2, maxTaskTime);
+			while (!rbTaskQueue.isEmpty() && System.currentTimeMillis() < end) {
+				if (rbTaskQueue.peek() != null) {
+					rbTaskQueue.poll().run();
+				}
+			}
+		}, 1, asyncPollPeriod);
+
 		LOG.info("is now enabled.");
 	}
-	
+
+	/**
+	 * Adds a task to be run by RB at a later time. On the next tick, tasks will
+	 * be run until either the queue is empty or the time taken to run RB tasks
+	 * has exceeded max_task_time milliseconds.
+	 * @param r
+	 */
+	public void addTask(final Runnable r) {
+		rbTaskQueue.add(r);
+	}
+
 	/**
 	 * Hack to get around the shitty java logging api, where -Djava.util.logging.config=logging.properties
 	 * doesn't seem to work, or i'm not specifying the right levels for the right Logger namespaces or some 
@@ -336,6 +367,17 @@ public class RealisticBiomes extends JavaPlugin {
 	
 	@Override
 	public void onDisable() {
+		taskQueueTask.cancel();
+		RealisticBiomes.doLog(Level.INFO, "Running remaining tasks");
+		while (!rbTaskQueue.isEmpty()) {
+			try {
+				rbTaskQueue.poll().run();
+			} catch (Exception e) {
+				RealisticBiomes.doLog(Level.WARNING,
+						"Exception thrown by task while running remaining tasks!", e);
+			}
+		}
+
 		if (persistConfig.enabled) {
 			LOG.info("saving plant growth data.");
 			plantManager.saveAllAndStop();

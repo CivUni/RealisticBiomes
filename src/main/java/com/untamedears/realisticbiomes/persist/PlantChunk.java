@@ -1,29 +1,55 @@
 package com.untamedears.realisticbiomes.persist;
 
+import com.untamedears.realisticbiomes.DropGrouper;
+import com.untamedears.realisticbiomes.GrowthConfig;
+import com.untamedears.realisticbiomes.RealisticBiomes;
+import com.untamedears.realisticbiomes.utils.MaterialAliases;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 
-import org.bukkit.World;
-import org.bukkit.block.Block;
-
-import com.untamedears.realisticbiomes.DropGrouper;
-import com.untamedears.realisticbiomes.GrowthConfig;
-import com.untamedears.realisticbiomes.RealisticBiomes;
-import com.untamedears.realisticbiomes.utils.MaterialAliases;
-
 public class PlantChunk {
+
+	private final class AsyncPlantChunk {
+		private final List<Plant.Row> rows;
+		private final ChunkCoords chunkCoords;
+
+		public AsyncPlantChunk(final List<Plant.Row> rows, final ChunkCoords chunkCoords) {
+			this.rows = new LinkedList<Plant.Row>(rows);
+			this.chunkCoords = chunkCoords;
+		}
+
+		public List<Plant.Row> getRows() {
+			return rows;
+		}
+
+		@Override
+		public String toString() {
+			return "AsyncPlantChunk{plantRows=" + rows.size()
+					+ ", chunk=(" + chunkCoords.x + "," + chunkCoords.z + ")}";
+		}
+	}
+
 	private final RealisticBiomes plugin;
 	private final ChunkCoords coords;
+
 	// index of this chunk in the database
 	private long index;
-	
 	private HashMap<Coords, Plant> plants;
+
+	// static reference to be accessed later
+	private static final List<AsyncPlantChunk> asyncChunks = new LinkedList<AsyncPlantChunk>();
+//	private static final List<Plant.Row> plantList = new ArrayList<Plant.Row>();
 
 	boolean loaded;
 	boolean inDatabase;
@@ -143,9 +169,6 @@ public class PlantChunk {
 
 	/**
 	 * Loads the plants from the database into this PlantChunk object.
-	 * 
-	 * @param coords
-	 * @return
 	 */
 	private boolean innerLoad() {
 		// if the data is being loaded, it is known that this chunk is in the
@@ -158,9 +181,7 @@ public class PlantChunk {
 			return true;
 		}
 
-		World world = plugin.getServer().getWorld(WorldID.getMCID(coords.w));
-
-		DropGrouper dropGrouper = new DropGrouper(world);
+		final List<Plant.Row> rows = new LinkedList<>();
 
 		// execute the load plant statement
 		try (Connection connection = plugin.getPlantManager().getDb().getConnection();
@@ -178,30 +199,8 @@ public class PlantChunk {
 					long date = rs.getLong(5);
 					float growth = rs.getFloat(6);
 					float fruitGrowth = rs.getFloat(7);
-	
-					RealisticBiomes.doLog(Level.FINEST, String
-									.format("PlantChunk.load(): got result: w:%s x:%s y:%s z:%s date:%s growth:%s",
-											w, x, y, z, date, growth));
-	
-					// if the plant does not correspond to an actual crop, don't load it
-					if (MaterialAliases.getConfig(plugin.materialGrowth, world.getBlockAt(x, y, z)) == null) {
-						RealisticBiomes.doLog(Level.FINER, "Plantchunk.load(): plant we got from db doesn't correspond to an actual crop, not loading");
-						continue;
-					}
-	
-					Plant plant = new Plant(date, growth, fruitGrowth);
-	
-					Block block = world.getBlockAt(x, y, z);
-					GrowthConfig growthConfig = MaterialAliases.getConfig(plugin.materialGrowth, block);
-					if (growthConfig.isPersistent()) {
-						plugin.growPlant(plant, block, growthConfig, null, dropGrouper);
-					}
-	
-					// if the plant isn't finished growing, add it to the plants
-					if (!plant.isFullyGrown()) {
-						plants.put(new Coords(w, x, y, z), plant);
-						RealisticBiomes.doLog(Level.FINER, "PlantChunk.load(): plant not finished growing, adding to plants list");
-					}
+
+					rows.add(new Plant.Row(w, x, y, z, date, growth, fruitGrowth));
 				}
 			}
 		} catch (SQLException e) {
@@ -211,7 +210,72 @@ public class PlantChunk {
 							index, coords), e);
 		}
 
-		dropGrouper.done();
+		// enqueue a new task
+		synchronized (asyncChunks) {
+			asyncChunks.add(new AsyncPlantChunk(rows, coords));
+		}
+
+		// Run the plant growth on a later tick to prevent chunkloader recursion when trees grow across chunk borders
+		plugin.addTask(() -> {
+			synchronized (asyncChunks) {
+				// no need to do anything
+				if (asyncChunks.isEmpty()) {
+					return;
+				}
+
+				// poll async chunk
+				final AsyncPlantChunk asyncChunk = asyncChunks.remove(0);
+
+				// ignore null entries
+				if (asyncChunk == null) {
+					RealisticBiomes.doLog(Level.INFO, "Found null in async chunk list");
+					return;
+				}
+
+				// process plant chunk asynchronously
+				final List<Plant.Row> rowsToLoad = asyncChunk.getRows();
+				final World world = plugin.getServer().getWorld(WorldID.getMCID(coords.w));
+				final DropGrouper dropGrouper = new DropGrouper(world);
+
+				RealisticBiomes.doLog(Level.FINE, "Load async chunk: " + asyncChunk.toString());
+
+				for (Plant.Row row : rowsToLoad) {
+					int w = row.w;
+					int x = row.x;
+					int y = row.y;
+					int z = row.z;
+					long date = row.date;
+					float growth = row.growth;
+					float fruitGrowth = row.fruitGrowth;
+
+					RealisticBiomes.doLog(Level.FINEST, String
+							.format("PlantChunk.load(): got result: w:%s x:%s y:%s z:%s date:%s growth:%s",
+									w, x, y, z, date, growth));
+
+					// if the plant does not correspond to an actual crop, don't load it
+					if (MaterialAliases.getConfig(plugin.materialGrowth, world.getBlockAt(x, y, z)) == null) {
+						RealisticBiomes.doLog(Level.FINER,
+								"Plantchunk.load(): plant we got from db doesn't correspond to an actual crop, not loading");
+						continue;
+					}
+
+					Plant plant = new Plant(date, growth, fruitGrowth);
+					Block block = world.getBlockAt(x, y, z);
+					GrowthConfig growthConfig = MaterialAliases.getConfig(plugin.materialGrowth, block);
+					if (growthConfig.isPersistent()) {
+						plugin.growPlant(plant, block, growthConfig, null, dropGrouper); // TODO: <-- null sometimes!
+					}
+
+					// if the plant isn't finished growing, add it to the plants
+					if (!plant.isFullyGrown()) {
+						plants.put(new Coords(w, x, y, z), plant);
+						RealisticBiomes.doLog(Level.FINER,
+								"PlantChunk.load(): plant not finished growing, adding to plants list");
+					}
+				}
+				dropGrouper.done();
+			}
+		});
 		
 		// TODO: this always returns true...refactor that!
 		loaded = true;
