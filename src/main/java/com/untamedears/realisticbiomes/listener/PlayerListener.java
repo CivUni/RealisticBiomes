@@ -4,6 +4,7 @@ import java.text.DecimalFormat;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -113,7 +114,7 @@ public class PlayerListener implements Listener {
 			
 			if (plant == null) {
 				String amount = new DecimalFormat("#0.00").format(rate);
-				event.getPlayer().sendMessage("§7[Realistic Biomes] \"" + materialName + "\": "+amount+" hours to maturity");
+				event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] \"" + materialName + "\": "+amount+" hours to maturity");
 				
 			} else if (plant.getGrowth() == 1.0) {
 				if (Fruits.isFruitFul(block.getType())) {
@@ -131,7 +132,7 @@ public class PlayerListener implements Listener {
 								
 								String amount = new DecimalFormat("#0.00").format(fruitRate);
 								String pAmount = new DecimalFormat("#0.00").format(fruitRate*(1.0-plant.getFruitGrowth()));
-								event.getPlayer().sendMessage("§7[Realistic Biomes] \""+growthConfig.getName()+"\": "+pAmount+" of "+amount+" hours to maturity");
+								event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] \""+growthConfig.getName()+"\": "+pAmount+" of "+amount+" hours to maturity");
 								return;
 							}
 						}
@@ -141,14 +142,14 @@ public class PlayerListener implements Listener {
 				
 				RealisticBiomes.doLog(Level.FINER, "PlayerListener.onPlayerInteractEvent(): plant fruit is: " + plant.getFruitGrowth());
 				String amount = new DecimalFormat("#0.00").format(rate);
-				event.getPlayer().sendMessage("§7[Realistic Biomes] \"" + materialName + "\": "+amount+" hours to maturity");
+				event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] \"" + materialName + "\": "+amount+" hours to maturity");
 
 			} else {
 				
 				RealisticBiomes.doLog(Level.FINER, "PlayerListener.onPlayerInteractEvent(): plant growth is: " + plant.getGrowth());
 				String amount = new DecimalFormat("#0.00").format(rate);
 				String pAmount = new DecimalFormat("#0.00").format(rate*(1.0-plant.getGrowth()));
-				event.getPlayer().sendMessage("§7[Realistic Biomes] \"" + materialName + "\": "+pAmount+" of "+amount+" hours to maturity");
+				event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] \"" + materialName + "\": "+pAmount+" of "+amount+" hours to maturity");
 			}
 			
 		} else {
@@ -169,7 +170,7 @@ public class PlayerListener implements Listener {
 				rateType = "Growth rate";
 			}
 			// send the message out to the user!
-			event.getPlayer().sendMessage("§7[Realistic Biomes] " + rateType + " \"" + materialName + "\" = "+amount);
+			event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] " + rateType + " \"" + materialName + "\" = "+amount);
 		}
 	}
 	
@@ -191,7 +192,7 @@ public class PlayerListener implements Listener {
 				growthAmount = 0.0;
 			String amount = new DecimalFormat("#0.00").format(growthAmount*100.0)+"%";
 			// send the message out to the user!
-			event.getPlayer().sendMessage("§7[Realistic Biomes] Spawn rate \""+growthConfig.getName()+"\" = "+amount);
+			event.getPlayer().sendMessage(ChatColor.GRAY + "[Realistic Biomes] Spawn rate \""+growthConfig.getName()+"\" = "+amount);
 		}
 	}
 }
