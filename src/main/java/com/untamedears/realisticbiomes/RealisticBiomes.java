@@ -514,7 +514,7 @@ public class RealisticBiomes extends JavaPlugin {
 			growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
 
 			// retry until it works or we run out of chances
-			while(growthPrevented && retries-- >= 0) {
+			while(growthPrevented && --retries >= 0) {
 				growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
 			}
 			RealisticBiomes.doLog(Level.INFO, String.format("Tree growth prevented: %b, took %d retries of %d",
