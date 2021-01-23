@@ -35,6 +35,9 @@ realistic_biomes:
  # Ticks to wait to perform queued tasks
  period_between_tasks: 100
 
+ # Number of retries given to a tree to grow in the case an optimal shape exists
+ max_tree_growth_retries: 3
+
  # catagories of biomes
  biome_aliases:
   water:

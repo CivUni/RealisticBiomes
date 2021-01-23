@@ -49,8 +49,8 @@ public class RealisticBiomes extends JavaPlugin {
 	public BlockGrower blockGrower;
 	public PersistConfig persistConfig;
 	private PlantManager plantManager;
+	private int maxTreeGrowRetries;
 
-	
 	@Override
 	public void onEnable() {		
 		RealisticBiomes.plugin = this;
@@ -83,6 +83,9 @@ public class RealisticBiomes extends JavaPlugin {
 		allowTallPlantReplication = config.getBoolean("allow_tallplant_replication", true);
 		maxTaskTime = config.getInt("max_task_time", 20);
 		asyncPollPeriod = config.getInt("period_between_tasks", 100);
+
+		// set max tree growths (lazy)
+		maxTreeGrowRetries = config.getInt("max_tree_growth_retries", 1);
 
 		// load the max log level for our logging hack
 		// if not defined then its just initalized at INFO
@@ -507,7 +510,16 @@ public class RealisticBiomes extends JavaPlugin {
 		// depending on its growth value
 		boolean growthPrevented = false;
 		if (growthConfig.getType() == Type.TREE) {
+			int retries = maxTreeGrowRetries;
 			growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
+
+			// retry until it works or we run out of chances
+			while(growthPrevented && retries-- >= 0) {
+				growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
+			}
+			RealisticBiomes.doLog(Level.INFO, String.format("Tree growth prevented: %b, took %d retries of %d",
+					growthPrevented, retries, maxTreeGrowRetries));
+
 		} else if (growthConfig.getType() == Type.COLUMN) {
 			growthPrevented = blockGrower.growColumn(block, plant.getGrowth(), dropGrouper);
 		} else {
