@@ -514,11 +514,12 @@ public class RealisticBiomes extends JavaPlugin {
 			growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
 
 			// retry until it works or we run out of chances
-			while(growthPrevented && --retries >= 0) {
+			while(growthPrevented && retries > 0) {
 				growthPrevented = blockGrower.generateTree(block, plant.getGrowth(), growthConfig.getTreeType());
+				retries--;
 			}
 			RealisticBiomes.doLog(Level.INFO, String.format("Tree growth prevented: %b, took %d retries of %d",
-					growthPrevented, retries, maxTreeGrowRetries));
+					growthPrevented, maxTreeGrowRetries - retries, maxTreeGrowRetries));
 
 		} else if (growthConfig.getType() == Type.COLUMN) {
 			growthPrevented = blockGrower.growColumn(block, plant.getGrowth(), dropGrouper);
